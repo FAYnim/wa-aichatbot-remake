@@ -6,28 +6,30 @@ const OpenAIService = require('./openaiService');
 const { OpenAI } = require('openai'); // Added for OpenRouter
 const { GoogleGenerativeAI } = require('@google/generative-ai'); // Added for Gemini
 
+console.log("[whatsappService.js] Required modules imported");
+
 class WhatsAppService {
   constructor(io) {
+    console.log("[whatsappService.js] WhatsAppService constructor called");
     this.io = io;
     this.sock = null;
     this.isReady = false;
     this.openaiService = new OpenAIService();
     this.sessionPath = process.env.SESSION_FILE_PATH || './session/baileys-auth';
 
-    // Initialize AI providers
+    console.log("[whatsappService.js] Basic properties initialized");
     this.initializeAIProviders();
   }
 
   initializeAIProviders() {
-    // AI Provider Configuration
+    console.log("[whatsappService.js] Initializing AI providers");
     this.aiProvider = (process.env.AI_PROVIDER || 'openai').toLowerCase();
     
-    // Reset all clients
     this.openRouterClient = null;
     this.geminiClient = null;
     
-    // OpenRouter Configuration
     if (this.aiProvider === 'openrouter') {
+      console.log("[whatsappService.js] Configuring OpenRouter");
       this.openRouterApiKey = process.env.OPENROUTER_API_KEY;
       this.openRouterModel = process.env.OPENROUTER_MODEL_NAME || 'openai/gpt-4o-mini-2024-07-18';
       if (this.openRouterApiKey) {
@@ -35,79 +37,69 @@ class WhatsAppService {
           apiKey: this.openRouterApiKey,
           baseURL: 'https://openrouter.ai/api/v1',
         });
-        console.log('🔄 OpenRouter Service configured.');
+        console.log('[whatsappService.js] 🔄 OpenRouter Service configured.');
       } else {
-        console.warn('⚠️ OpenRouter API key not provided. OpenRouter will not be available.');
+        console.warn('[whatsappService.js] ⚠️ OpenRouter API key not provided.');
       }
     }
 
-    // Gemini Configuration
     if (this.aiProvider === 'gemini') {
+      console.log("[whatsappService.js] Configuring Gemini");
       this.geminiApiKey = process.env.GEMINI_API_KEY;
       if (this.geminiApiKey) {
         this.geminiClient = new GoogleGenerativeAI(this.geminiApiKey).getGenerativeModel({ model: "gemini-2.0-flash" });
-        console.log('🔄 Gemini Service configured.');
+        console.log('[whatsappService.js] 🔄 Gemini Service configured.');
       } else {
-        console.warn('⚠️ Gemini API key not provided. Gemini will not be available.');
+        console.warn('[whatsappService.js] ⚠️ Gemini API key not provided.');
       }
     }
-    console.log(`🤖 Current AI Provider: ${this.aiProvider}`);
+    console.log(`[whatsappService.js] 🤖 Current AI Provider: ${this.aiProvider}`);
   }
 
-  // New method to reload AI provider configuration
   reloadAIProvider() {
-    console.log('🔄 Reloading AI Provider configuration...');
+    console.log('[whatsappService.js] 🔄 Reloading AI Provider configuration...');
     
-    // Re-read environment variables
     require('dotenv').config();
-    
-    // Reinitialize AI providers with new config
     this.initializeAIProviders();
     
-    // Emit update to connected clients
     this.io.emit('ai-provider-reloaded', {
       newProvider: this.aiProvider,
       timestamp: new Date(),
       message: `AI Provider switched to ${this.aiProvider}`
     });
     
-    console.log(`✅ AI Provider reloaded successfully: ${this.aiProvider}`);
+    console.log(`[whatsappService.js] ✅ AI Provider reloaded successfully: ${this.aiProvider}`);
     return true;
   }
 
-  // New method to reload auto-reply configuration
   reloadAutoReplyConfig() {
-    console.log('🔄 Reloading Auto-Reply configuration...');
+    console.log('[whatsappService.js] 🔄 Reloading Auto-Reply configuration...');
     
     try {
-      // Reload auto-reply config in openaiService
       this.openaiService.reloadAutoReplyConfig();
-      
-      // Emit update to connected clients
       this.io.emit('auto-reply-config-reloaded', {
         timestamp: new Date(),
         message: 'Auto-reply configuration reloaded successfully'
       });
       
-      console.log('✅ Auto-Reply configuration reloaded successfully');
+      console.log('[whatsappService.js] ✅ Auto-Reply configuration reloaded successfully');
       return true;
     } catch (error) {
-      console.error('❌ Failed to reload auto-reply config:', error);
+      console.error('[whatsappService.js] ❌ Failed to reload auto-reply config:', error);
       return false;
     }
   }
 
   async initialize() {
-    console.log('🔄 Initializing WhatsApp client with Baileys...');
+    console.log('[whatsappService.js] 🔄 Initializing WhatsApp client with Baileys...');
     
     try {
-      // Create session directory if it doesn't exist
+      console.log("[whatsappService.js] Creating session directory if needed");
       await fs.mkdir(this.sessionPath, { recursive: true });
       
-      // Use multi-file auth state
       const { state, saveCreds } = await useMultiFileAuthState(this.sessionPath);
+      console.log("[whatsappService.js] Multi-file auth state initialized");
       
-      // Create a proper logger object with child method
       const logger = {
         level: 'silent',
         child: () => logger,
@@ -119,36 +111,37 @@ class WhatsAppService {
         fatal: () => {}
       };
       
-      // Create socket connection
       this.sock = makeWASocket({
         auth: state,
-        printQRInTerminal: false, // We'll handle QR display ourselves
+        printQRInTerminal: false,
         logger: logger
       });
+      console.log("[whatsappService.js] WhatsApp socket created");
 
-      // Setup event handlers
       this.setupEventHandlers(saveCreds);
+      console.log("[whatsappService.js] Event handlers setup completed");
       
     } catch (error) {
-      console.error('❌ Error initializing WhatsApp client:', error);
+      console.error('[whatsappService.js] ❌ Error initializing WhatsApp client:', error);
       this.io.emit('error', { message: 'Failed to initialize WhatsApp client', error: error.message });
     }
   }
 
   setupEventHandlers(saveCreds) {
-    // Connection update event
+    console.log("[whatsappService.js] Setting up event handlers");
+    
     this.sock.ev.on('connection.update', (update) => {
       const { connection, lastDisconnect, qr } = update;
       
       if (qr) {
-        console.log('📱 QR Code received, scan with your phone:');
+        console.log('[whatsappService.js] 📱 QR Code received, scan with your phone:');
         qrcode.generate(qr, { small: true });
         this.io.emit('qr-code', qr);
       }
       
       if (connection === 'close') {
         const shouldReconnect = (lastDisconnect?.error)?.output?.statusCode !== DisconnectReason.loggedOut;
-        console.log('📱 Connection closed due to ', lastDisconnect?.error, ', reconnecting ', shouldReconnect);
+        console.log('[whatsappService.js] 📱 Connection closed due to ', lastDisconnect?.error, ', reconnecting ', shouldReconnect);
         
         this.isReady = false;
         this.io.emit('whatsapp-disconnected', { 
@@ -156,24 +149,23 @@ class WhatsAppService {
           shouldReconnect 
         });
         
-        // Reconnect if not logged out
         if (shouldReconnect) {
           setTimeout(() => {
             this.initialize();
           }, 3000);
         }
       } else if (connection === 'open') {
-        console.log('✅ WhatsApp client is ready!');
+        console.log('[whatsappService.js] ✅ WhatsApp client is ready!');
         this.isReady = true;
         this.io.emit('whatsapp-ready', { status: 'ready' });
       }
     });
 
-    // Credentials update event
     this.sock.ev.on('creds.update', saveCreds);
+    console.log("[whatsappService.js] Credentials update handler set");
 
-    // Messages event
     this.sock.ev.on('messages.upsert', async (m) => {
+      console.log("[whatsappService.js] New message received");
       const message = m.messages[0];
       if (!message.message || message.key.fromMe) return;
       
@@ -182,13 +174,13 @@ class WhatsAppService {
   }
 
   async handleMessage(message) {
+    console.log("[whatsappService.js] Handling incoming message");
     try {
       const messageText = this.extractMessageText(message);
       const senderId = message.key.remoteJid;
       const isGroup = senderId.includes('@g.us');
       const senderNumber = message.key.participant || senderId;
       
-      // Emit received message to web clients
       this.io.emit('message-received', {
         from: senderId,
         body: messageText,
@@ -196,18 +188,16 @@ class WhatsAppService {
         isGroup: isGroup
       });
 
-      // Skip if message is from status broadcast
       if (senderId === 'status@broadcast') {
+        console.log("[whatsappService.js] Ignoring status broadcast message");
         return;
       }
 
-      console.log(`📨 Message from ${senderNumber}: ${messageText}`);
+      console.log(`[whatsappService.js] 📨 Message from ${senderNumber}: ${messageText}`);
 
-      // Check if auto-reply is enabled for this chat type
       if (!this.openaiService.shouldAutoReply(isGroup)) {
-        console.log(`🔇 Auto-reply disabled for ${isGroup ? 'group' : 'private'} chat: ${senderNumber}`);
+        console.log(`[whatsappService.js] 🔇 Auto-reply disabled for ${isGroup ? 'group' : 'private'} chat: ${senderNumber}`);
         
-        // Emit info to web clients about skipped message
         this.io.emit('message-skipped', {
           from: senderId,
           body: messageText,
@@ -216,21 +206,21 @@ class WhatsAppService {
           reason: isGroup ? 'Group auto-reply disabled' : 'Private auto-reply disabled'
         });
         
-        return; // Skip AI processing
+        return;
       }
 
-      // Process with AI if message is not empty
       if (messageText && messageText.trim()) {
         await this.processWithAI(message, messageText, senderNumber, senderId);
       }
 
     } catch (error) {
-      console.error('❌ Error handling message:', error);
+      console.error('[whatsappService.js] ❌ Error handling message:', error);
       this.io.emit('error', { message: 'Error handling message', error: error.message });
     }
   }
 
   extractMessageText(message) {
+    console.log("[whatsappService.js] Extracting message text");
     const messageContent = message.message;
     
     if (messageContent.conversation) {
@@ -247,15 +237,14 @@ class WhatsAppService {
   }
 
   async processWithAI(message, messageText, senderNumber, chatId) {
+    console.log(`[whatsappService.js] Processing message with ${this.aiProvider} AI`);
     try {
       const isGroup = chatId.includes('@g.us');
       const senderName = senderNumber.replace('@s.whatsapp.net', '');
 
-      // Check if auto-reply is enabled for this type of chat
       if (!this.openaiService.shouldAutoReply(isGroup)) {
-        console.log(`🔇 Auto-reply disabled for ${isGroup ? 'group' : 'private'} chat from ${senderName}`);
+        console.log(`[whatsappService.js] 🔇 Auto-reply disabled for ${isGroup ? 'group' : 'private'} chat from ${senderName}`);
         
-        // Emit message as received but no auto-reply
         this.io.emit('message-received-no-reply', {
           from: chatId,
           message: messageText,
@@ -268,12 +257,12 @@ class WhatsAppService {
         return;
       }
 
-      // Show typing indicator
+      console.log("[whatsappService.js] Sending typing indicator");
       await this.sock.sendPresenceUpdate('composing', chatId);
 
       let aiResponse;
+      console.log(`[whatsappService.js] Using AI provider: ${this.aiProvider}`);
 
-      // Use the configured AI provider
       switch (this.aiProvider) {
         case 'openrouter':
           if (!this.openRouterClient) {
@@ -293,7 +282,6 @@ class WhatsAppService {
           break;
       }
 
-      // If response is null, it means message was blacklisted - don't send any response
       if (aiResponse === null) {
         this.io.emit('message-blocked', {
           from: chatId,
@@ -302,20 +290,18 @@ class WhatsAppService {
           timestamp: new Date()
         });
         
-        console.log(`🚫 Message blocked from ${senderName} by ${this.aiProvider} - no response sent`);
+        console.log(`[whatsappService.js] 🚫 Message blocked from ${senderName} by ${this.aiProvider}`);
         return;
       }
 
-      // Additional WhatsApp-specific formatting
       const whatsappOptimizedResponse = this.optimizeForWhatsApp(aiResponse);
+      console.log("[whatsappService.js] Message optimized for WhatsApp");
 
-      // Send response
       await this.sock.sendMessage(chatId, { text: whatsappOptimizedResponse });
+      console.log("[whatsappService.js] Message sent successfully");
 
-      // Clear typing indicator
       await this.sock.sendPresenceUpdate('available', chatId);
 
-      // Emit AI response to web clients
       this.io.emit('ai-response', {
         to: chatId,
         originalMessage: messageText,
@@ -324,10 +310,10 @@ class WhatsAppService {
         timestamp: new Date()
       });
 
-      console.log(`🤖 ${this.aiProvider} Response sent to ${senderName}`);
+      console.log(`[whatsappService.js] 🤖 ${this.aiProvider} Response sent to ${senderName}`);
 
     } catch (error) {
-      console.error(`❌ Error processing with ${this.aiProvider} AI:`, error);
+      console.error(`[whatsappService.js] ❌ Error processing with ${this.aiProvider} AI:`, error);
       await this.sock.sendMessage(chatId, { 
         text: 'Maaf, terjadi kesalahan saat memproses pesan Anda dengan AI. Silakan coba lagi nanti.' 
       });
@@ -335,10 +321,10 @@ class WhatsAppService {
   }
 
   async generateOpenRouterResponse(text, senderName) {
-    // Reuse blacklist check from openaiService
+    console.log("[whatsappService.js] Generating OpenRouter response");
     const blacklistCheck = this.openaiService.isMessageBlacklisted(text);
     if (blacklistCheck.blocked) {
-      console.log(`🚫 Message from ${senderName} blacklisted by OpenRouter service: ${blacklistCheck.word}`);
+      console.log(`[whatsappService.js] 🚫 Message from ${senderName} blacklisted: ${blacklistCheck.word}`);
       return null;
     }
 
@@ -350,7 +336,7 @@ class WhatsAppService {
         { role: "user", content: `Message from ${senderName}: ${text}` }
       ];
       
-      console.log(`🔄 Sending to OpenRouter (${this.openRouterModel}): ${text}`);
+      console.log(`[whatsappService.js] 🔄 Sending to OpenRouter (${this.openRouterModel}): ${text}`);
       const completion = await this.openRouterClient.chat.completions.create({
         model: this.openRouterModel,
         messages: messages,
@@ -360,13 +346,13 @@ class WhatsAppService {
       
       const responseText = completion.choices[0]?.message?.content?.trim();
       if (!responseText) {
-        console.warn('⚠️ OpenRouter returned an empty response.');
+        console.warn('[whatsappService.js] ⚠️ OpenRouter returned an empty response.');
         return 'Maaf, saya tidak bisa memberikan respons saat ini.';
       }
-      console.log(`💬 OpenRouter Response: ${responseText}`);
+      console.log(`[whatsappService.js] 💬 OpenRouter Response: ${responseText}`);
       return responseText;
     } catch (error) {
-      console.error('❌ Error with OpenRouter API:', error.response ? error.response.data : error.message);
+      console.error('[whatsappService.js] ❌ Error with OpenRouter API:', error.response ? error.response.data : error.message);
       
       if (error.status === 401) {
         return 'Maaf, OpenRouter API key tidak valid. Silakan periksa konfigurasi.';
@@ -379,33 +365,31 @@ class WhatsAppService {
   }
 
   async generateGeminiResponse(text, senderName) {
-    // Reuse blacklist check from openaiService
+    console.log("[whatsappService.js] Generating Gemini response");
     const blacklistCheck = this.openaiService.isMessageBlacklisted(text);
     if (blacklistCheck.blocked) {
-      console.log(`🚫 Message from ${senderName} blacklisted by Gemini service: ${blacklistCheck.word}`);
+      console.log(`[whatsappService.js] 🚫 Message from ${senderName} blacklisted: ${blacklistCheck.word}`);
       return null;
     }
 
     try {
       const systemInstruction = this.openaiService.getSystemPrompt() || "You are a helpful assistant.";
-      
-      // Create a more appropriate prompt for Gemini
       const fullPrompt = `${systemInstruction}\n\nUser (${senderName}): ${text}\n\nAssistant:`;
       
-      console.log(`🔄 Sending to Gemini: ${text}`);
+      console.log(`[whatsappService.js] 🔄 Sending to Gemini: ${text}`);
       
       const result = await this.geminiClient.generateContent(fullPrompt);
       const response = await result.response;
       const responseText = response.text()?.trim();
 
       if (!responseText) {
-        console.warn('⚠️ Gemini returned an empty response.');
+        console.warn('[whatsappService.js] ⚠️ Gemini returned an empty response.');
         return 'Maaf, saya tidak bisa memberikan respons saat ini.';
       }
-      console.log(`💬 Gemini Response: ${responseText}`);
+      console.log(`[whatsappService.js] 💬 Gemini Response: ${responseText}`);
       return responseText;
     } catch (error) {
-      console.error('❌ Error with Gemini API:', error);
+      console.error('[whatsappService.js] ❌ Error with Gemini API:', error);
       
       if (error.message?.includes('API_KEY_INVALID')) {
         return 'Maaf, Gemini API key tidak valid. Silakan periksa konfigurasi.';
@@ -419,15 +403,14 @@ class WhatsAppService {
     }
   }
 
-  // Optimize message format specifically for WhatsApp
   optimizeForWhatsApp(text) {
+    console.log("[whatsappService.js] Optimizing message for WhatsApp");
     if (!text) return text;
 
     let optimized = text;
 
-    // Split long messages to prevent truncation (WhatsApp limit ~4096 chars)
     if (optimized.length > 4000) {
-      // Find a good breaking point (preferably at sentence end)
+      console.log("[whatsappService.js] Message too long, splitting");
       let breakPoint = optimized.lastIndexOf('.', 4000);
       if (breakPoint === -1) {
         breakPoint = optimized.lastIndexOf(' ', 4000);
@@ -442,20 +425,17 @@ class WhatsAppService {
       optimized = firstPart + '\n\n*[Lanjutan...]*\n\n' + secondPart;
     }
 
-    // JANGAN manipulasi text formatting - biarkan asli untuk preservasi emoji dan bold text
-    // Hanya trim whitespace di awal dan akhir
     return optimized.trim();
   }
 
   async sendMessage(to, message) {
+    console.log("[whatsappService.js] Sending message");
     if (!this.isReady) {
       throw new Error('WhatsApp client is not ready');
     }
 
     try {
       const chatId = to.includes('@') ? to : `${to}@s.whatsapp.net`;
-      
-      // Apply WhatsApp formatting to outgoing messages too
       const formattedMessage = this.optimizeForWhatsApp(message);
       
       await this.sock.sendMessage(chatId, { text: formattedMessage });
@@ -466,30 +446,31 @@ class WhatsAppService {
         timestamp: new Date()
       });
 
+      console.log("[whatsappService.js] Message sent successfully");
       return { success: true, message: 'Message sent successfully' };
     } catch (error) {
-      console.error('❌ Error sending message:', error);
+      console.error('[whatsappService.js] ❌ Error sending message:', error);
       throw error;
     }
   }
 
   async getChats() {
+    console.log("[whatsappService.js] Getting chats");
     if (!this.isReady) {
       throw new Error('WhatsApp client is not ready');
     }
 
     try {
-      // Note: Baileys doesn't have a direct getChats method like whatsapp-web.js
-      // You'll need to implement chat storage if needed
-      console.log('ℹ️ Baileys doesn\'t provide chat list directly. Implement if needed.');
+      console.log('[whatsappService.js] ℹ️ Baileys doesn\'t provide chat list directly.');
       return [];
     } catch (error) {
-      console.error('❌ Error getting chats:', error);
+      console.error('[whatsappService.js] ❌ Error getting chats:', error);
       throw error;
     }
   }
 
   getStatus() {
+    console.log("[whatsappService.js] Getting status");
     return {
       isReady: this.isReady,
       hasClient: !!this.sock
@@ -497,34 +478,31 @@ class WhatsAppService {
   }
 
   async destroy() {
+    console.log('[whatsappService.js] 🔄 Destroying WhatsApp client...');
     if (this.sock) {
-      console.log('🔄 Destroying WhatsApp client...');
       this.sock.end();
       this.sock = null;
       this.isReady = false;
       this.io.emit('whatsapp-destroyed');
-      console.log('✅ WhatsApp client destroyed');
+      console.log('[whatsappService.js] ✅ WhatsApp client destroyed');
     }
   }
 
   async clearSession() {
+    console.log('[whatsappService.js] 🔄 Clearing WhatsApp session...');
     try {
-      console.log('🔄 Clearing WhatsApp session...');
-      
-      // First destroy the client if it exists
       if (this.sock) {
-        console.log('🔄 Destroying existing client...');
+        console.log('[whatsappService.js] 🔄 Destroying existing client...');
         await this.destroy();
         await new Promise(resolve => setTimeout(resolve, 2000));
       }
 
-      // Remove session directory
-      console.log(`🔍 Checking session directory: ${this.sessionPath}`);
+      console.log(`[whatsappService.js] 🔍 Checking session directory: ${this.sessionPath}`);
       
       if (await this.directoryExists(this.sessionPath)) {
-        console.log('📂 Session directory found, removing...');
+        console.log('[whatsappService.js] 📂 Session directory found, removing...');
         await this.removeDirectory(this.sessionPath);
-        console.log('✅ Session directory cleared successfully');
+        console.log('[whatsappService.js] ✅ Session directory cleared successfully');
         
         this.io.emit('session-cleared', { 
           success: true, 
@@ -533,7 +511,7 @@ class WhatsAppService {
         
         return { success: true, message: 'Session cleared successfully' };
       } else {
-        console.log('ℹ️ No session directory found');
+        console.log('[whatsappService.js] ℹ️ No session directory found');
         this.io.emit('session-cleared', { 
           success: true, 
           message: 'No session found to clear' 
@@ -543,7 +521,7 @@ class WhatsAppService {
       }
       
     } catch (error) {
-      console.error('❌ Error clearing session:', error);
+      console.error('[whatsappService.js] ❌ Error clearing session:', error);
       this.io.emit('session-clear-error', { 
         error: error.message 
       });
@@ -552,6 +530,7 @@ class WhatsAppService {
   }
 
   async directoryExists(dirPath) {
+    console.log(`[whatsappService.js] Checking if directory exists: ${dirPath}`);
     try {
       const stats = await fs.stat(dirPath);
       return stats.isDirectory();
@@ -561,30 +540,26 @@ class WhatsAppService {
   }
 
   async removeDirectory(dirPath) {
+    console.log(`[whatsappService.js] 🗑️ Removing directory: ${dirPath}`);
     try {
-      console.log(`🗑️ Removing directory: ${dirPath}`);
-      
-      // Use recursive option with fs.rm (newer Node.js method)
       if (fs.rm) {
         await fs.rm(dirPath, { recursive: true, force: true });
       } else {
-        // Fallback for older Node.js versions
         await this.removeDirectoryRecursive(dirPath);
       }
       
-      console.log(`✅ Directory removed: ${dirPath}`);
+      console.log(`[whatsappService.js] ✅ Directory removed: ${dirPath}`);
     } catch (error) {
-      console.error(`❌ Error removing directory ${dirPath}:`, error);
+      console.error(`[whatsappService.js] ❌ Error removing directory ${dirPath}:`, error);
       
-      // Try alternative method if first method fails
       if (error.code === 'EBUSY' || error.code === 'ENOTEMPTY') {
-        console.log('🔄 Retrying with alternative method...');
+        console.log('[whatsappService.js] 🔄 Retrying with alternative method...');
         await new Promise(resolve => setTimeout(resolve, 1000));
         try {
           await this.removeDirectoryRecursive(dirPath);
-          console.log(`✅ Directory removed with alternative method: ${dirPath}`);
+          console.log(`[whatsappService.js] ✅ Directory removed with alternative method: ${dirPath}`);
         } catch (retryError) {
-          console.error(`❌ Alternative method also failed:`, retryError);
+          console.error('[whatsappService.js] ❌ Alternative method also failed:', retryError);
           throw retryError;
         }
       } else {
@@ -594,6 +569,7 @@ class WhatsAppService {
   }
 
   async removeDirectoryRecursive(dirPath) {
+    console.log(`[whatsappService.js] Removing directory recursively: ${dirPath}`);
     try {
       const files = await fs.readdir(dirPath);
       
@@ -609,18 +585,17 @@ class WhatsAppService {
             await fs.unlink(filePath);
           }
         } catch (fileError) {
-          console.warn(`⚠️ Warning: Could not remove ${filePath}:`, fileError.message);
-          // Continue with other files even if one fails
+          console.warn(`[whatsappService.js] ⚠️ Could not remove ${filePath}:`, fileError.message);
         }
       }
       
-      // Remove the directory itself
       await fs.rmdir(dirPath);
     } catch (error) {
-      console.error(`❌ Error in removeDirectoryRecursive for ${dirPath}:`, error);
+      console.error(`[whatsappService.js] ❌ Error in removeDirectoryRecursive for ${dirPath}:`, error);
       throw error;
     }
   }
 }
 
+console.log("[whatsappService.js] WhatsAppService class defined");
 module.exports = WhatsAppService;
