@@ -56,7 +56,7 @@ body::before {
 .container {
     max-width: 1400px;
     margin: 0 auto;
-    padding: 20px;
+/*    padding: 20px;*/
     min-height: 100vh;
 }
 
@@ -64,7 +64,7 @@ body::before {
     background: linear-gradient(135deg, var(--primary-green) 0%, var(--dark-green) 100%);
     color: white;
     padding: 2rem;
-    border-radius: var(--radius-xl);
+/*    border-radius: var(--radius-xl);*/
     margin-bottom: 2rem;
     box-shadow: var(--shadow-large);
     position: relative;
@@ -652,7 +652,7 @@ body::before {
     }
     
     .container {
-        padding: 1rem;
+        /*padding: 1rem;*/
     }
 }
 
